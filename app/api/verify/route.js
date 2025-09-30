@@ -1,75 +1,66 @@
-import { kv } from "@/lib/kv";
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
+const { sign } = require("@/lib/sign.cjs");
 
-function parseUUID(uuid) {
-  return {
-    uid: uuid.substring(0, 16),
-    tp:  uuid.substring(16, 18),
-    ts:  uuid.substring(18, 27),
-    rlc: uuid.substring(27)
-  };
+// 驗證 RLC (Rolling Code)
+function verifyRLC(uid, tp, ts, rlc) {
+  try {
+    const expected = sign({ uid, ts });
+    return expected.toLowerCase() === rlc.toLowerCase();
+  } catch (e) {
+    console.error("RLC 驗證失敗:", e);
+    return false;
+  }
 }
 
-// ⚠️ 佔位：請換成 Mickey 1.0 產生的期望 RLC 再比對
-function verifyRLCPlaceholder(uid, tp, ts, rlc) {
-  if (!uid || !tp || !ts || !rlc) return false;
-  return /^[0-9a-fA-F]+$/.test(rlc); // 只檢查為 hex，避免全通過；正式須換真驗證
-}
+export async function GET(req) {
+  const { searchParams } = new URL(req.url);
+  const d = searchParams.get("d");      // 生日日期
+  const uuid = searchParams.get("uuid"); // SIC43NT 提供的 uuid
 
-export async function GET(request) {
-  const { searchParams } = new URL(request.url);
-  const d = searchParams.get("d");
-  const uuid = searchParams.get("uuid");
-  if (!d || !uuid) return Response.json({ status:"error", reason:"缺少參數" }, { status:400 });
-
-  const { uid, tp, ts, rlc } = parseUUID(uuid);
-
-  if (tp !== "HB") return Response.json({ status:"error", reason:"TP 不符" }, { status:403 });
-
-  const key = `card:${uid}`;
-  let card = await kv.hgetall(key);
-
-  // 若未登錄，先建 PENDING（或你也可以強制必須先 import 才可用）
-  if (!card) {
-    card = {
-      uid, tp, birthday: d, status: "PENDING",
-      points: 0, ts_last: 0,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-    await kv.hset(key, card);
-    await kv.sadd("cards", uid);
+  if (!d || !uuid) {
+    return Response.json(
+      { status: "error", reason: "缺少必要參數" },
+      { status: 400 }
+    );
   }
 
-  // TS 遞增防重播
-  const last = parseInt(card.ts_last || "0", 10);
-  const nowTs = parseInt(ts || "0", 10);
-  if (!(nowTs > last)) return Response.json({ status:"error", reason:"TS 過期或重播" }, { status:403 });
+  // 解析 uuid: [UID][TP][TS][RLC]
+  try {
+    const uid = uuid.slice(0, 14);       // 前14 hex = UID
+    const tp = uuid.slice(14, 16);       // 2 hex = TP (ex: "HB")
+    const ts = uuid.slice(16, 24);       // 8 hex = TS
+    const rlc = uuid.slice(24);          // 其餘 = RLC
 
-  // RLC 校驗（正式須用 Mickey 1.0）
-  if (!verifyRLCPlaceholder(uid, tp, ts, rlc)) {
-    return Response.json({ status:"error", reason:"RLC 錯誤" }, { status:403 });
-  }
+    if (tp !== "HB") {
+      return Response.json(
+        { status: "error", reason: "TP 錯誤 (需HB)" },
+        { status: 403 }
+      );
+    }
 
-  await kv.hset(key, { ...card, ts_last: nowTs, updated_at: new Date().toISOString() });
+    // 檢查 RLC
+    if (!verifyRLC(uid, tp, ts, rlc)) {
+      return Response.json(
+        { status: "error", reason: "RLC 驗證失敗" },
+        { status: 403 }
+      );
+    }
 
-  if (card.status === "PENDING") {
-    return Response.json({ status:"pending" });
-  }
-
-  if (card.status === "ACTIVATED") {
+    // ✅ 通過驗證 → 回傳開卡流程頁
     return Response.json({
-      status:"activated",
-      user: {
-        uid: card.uid,
-        name: card.user_name || "",
-        birthday: card.birthday,
-        birthday_detail: card.user_birthday_detail || "",
-        blood_type: card.blood_type || "",
-        hobbies: card.hobbies || ""
-      },
-      points: parseInt(card.points || "0", 10)
+      status: "ok",
+      step: "activate",
+      uid,
+      birthday: d,
+      ts,
+      message: "請填寫表單完成開卡"
     });
+  } catch (err) {
+    console.error("UUID 解析錯誤:", err);
+    return Response.json(
+      { status: "error", reason: "UUID 格式錯誤" },
+      { status: 400 }
+    );
   }
-
-  return Response.json({ status:"error", reason:"卡片狀態異常" }, { status:403 });
 }
