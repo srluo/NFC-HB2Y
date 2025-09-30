@@ -1,0 +1,68 @@
+{
+  "MISSING_UID": {
+    "message": {
+      "zh": "⚠️ 缺少卡片資訊",
+      "en": "⚠️ Missing card UID"
+    }
+  },
+  "INVALID_BIRTHDAY": {
+    "message": {
+      "zh": "⚠️ 生日格式錯誤，請輸入 YYYY-MM-DD",
+      "en": "⚠️ Invalid birthday format, use YYYY-MM-DD"
+    }
+  },
+  "INVALID_TOKEN": {
+    "message": {
+      "zh": "⚠️ 驗證失敗，請重新感應卡片",
+      "en": "⚠️ Invalid token, please tap the card again"
+    }
+  },
+  "CARD_NOT_FOUND": {
+    "message": {
+      "zh": "⚠️ 找不到卡片資料",
+      "en": "⚠️ Card not found"
+    }
+  },
+  "CARD_ALREADY_ACTIVATED": {
+    "message": {
+      "zh": "⚠️ 此卡片已完成開卡",
+      "en": "⚠️ Card is already activated"
+    }
+  },
+  "CARD_BLOCKED": {
+    "message": {
+      "zh": "⚠️ 此卡片已停用，請聯繫客服",
+      "en": "⚠️ This card has been blocked, please contact support"
+    }
+  },
+  "INSUFFICIENT_POINTS": {
+    "message": {
+      "zh": "⚠️ 點數不足，請加值後再試",
+      "en": "⚠️ Insufficient points, please recharge and try again"
+    }
+  },
+  "POINTS_DEDUCTION_FAILED": {
+    "message": {
+      "zh": "⚠️ 系統錯誤，扣點失敗",
+      "en": "⚠️ System error, failed to deduct points"
+    }
+  },
+  "SERVER_ERROR": {
+    "message": {
+      "zh": "⚠️ 系統忙碌中，請稍後重試",
+      "en": "⚠️ Server error, please try again later"
+    }
+  },
+  "KV_UNAVAILABLE": {
+    "message": {
+      "zh": "⚠️ 資料庫暫時無法使用",
+      "en": "⚠️ Database unavailable"
+    }
+  },
+  "UNKNOWN_ERROR": {
+    "message": {
+      "zh": "⚠️ 未知錯誤，請稍後重試",
+      "en": "⚠️ Unknown error, please try again later"
+    }
+  }
+}
