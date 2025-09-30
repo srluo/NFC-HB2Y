@@ -29,7 +29,7 @@ export default function ActivateCard() {
       });
 
       const data = await res.json();
-      if (data.status === "ok") {
+      if (data.status === "activated" || data.status === "ok") {
         setStatus("success");
       } else {
         setStatus("error");
@@ -64,7 +64,9 @@ export default function ActivateCard() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium">生日（YYYY-MM-DD）</label>
+            <label className="block text-sm font-medium">
+              生日（YYYY-MM-DD）
+            </label>
             <input
               type="date"
               name="birthday"
@@ -101,8 +103,9 @@ export default function ActivateCard() {
               className="w-full border rounded-lg px-3 py-2 mt-1"
               rows="3"
             />
-          </div
+          </div>
 
+          {/* ✅ 修正後的 button */}
           <button
             type="submit"
             disabled={status === "loading"}
