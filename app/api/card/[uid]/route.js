@@ -8,7 +8,9 @@ export async function GET(req, { params }) {
   const key = `card:${uid}`;
   const card = await kv.hgetall(key);
 
-  if (!card) return apiError("CARD_NOT_FOUND", 404);
+  if (!card || Object.keys(card).length === 0) {
+    return apiError("CARD_NOT_FOUND", 404);
+  }
 
   return Response.json({
     status: "ok",
@@ -26,8 +28,12 @@ export async function POST(req, { params }) {
   const key = `card:${uid}`;
   const card = await kv.hgetall(key);
 
-  if (!card) return apiError("CARD_NOT_FOUND", 404);
-  if (card.status === "ACTIVATED") return apiError("CARD_ALREADY_ACTIVATED", 409);
+  if (!card || Object.keys(card).length === 0) {
+    return apiError("CARD_NOT_FOUND", 404);
+  }
+  if (card.status === "ACTIVATED") {
+    return apiError("CARD_ALREADY_ACTIVATED", 409);
+  }
 
   const updated = {
     ...card,
@@ -43,7 +49,8 @@ export async function POST(req, { params }) {
   await kv.hset(key, updated);
 
   return Response.json({
-    status: "activated",
+    status: "ok",
+    action: "activated",
     user: {
       uid,
       name: updated.user_name,
