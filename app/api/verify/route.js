@@ -1,5 +1,5 @@
-import { apiError } from "@/lib/apiError";
-import { sign } from "@/lib/sign.cjs";  // 你的 Mickey 簽章程式
+import { NextResponse } from "next/server";
+import { sign } from "@/lib/sign"; // 你的 Mickey 驗證函式
 
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
@@ -7,39 +7,40 @@ export async function GET(req) {
   const uuid = searchParams.get("uuid");
 
   if (!d || !uuid) {
-    return apiError("MISSING_PARAM", 400);
+    return NextResponse.json({ status: "error", code: "MISSING_PARAMS" }, { status: 400 });
   }
 
   try {
-    // === 切割 UUID ===
-    // 例: 3949500194A474HB000006ECF1684933
-    const uid = uuid.substring(0, 14);   // 14 hex chars (7 bytes UID)
-    const tp  = uuid.substring(14, 16);  // TP code (HB)
-    const ts  = uuid.substring(16, 24);  // 8 hex (4 bytes)
-    const rlc = uuid.substring(24, 32);  // 8 hex (4 bytes)
+    // 解析 uuid
+    const uid = uuid.substring(0, 14);  // ← 注意這裡，你之前切 12 錯了
+    const tp = uuid.substring(14, 16);
+    const ts = uuid.substring(16, 24);
+    const rlc = uuid.substring(24, 32);
 
-    // === 檢查 TP ===
+    // 只接受 HB
     if (tp !== "HB") {
-      return apiError("INVALID_TP", 400);
+      return NextResponse.json({ status: "error", code: "INVALID_TP" }, { status: 400 });
     }
 
-    // === 計算期望簽章 ===
-    const expected = sign({ uid, ts });
+    // 驗證 RLC
+    const expected = sign({ uid, ts }).substring(0, 8).toUpperCase();
 
-    // === Debug log ===
-    console.log("VERIFY DEBUG:", { uid, tp, ts, rlc, expected });
-
-    if (expected.toUpperCase() !== rlc.toUpperCase()) {
-      return apiError("INVALID_TOKEN", 401);
+    if (expected !== rlc.toUpperCase()) {
+      return NextResponse.json({ status: "error", code: "INVALID_TOKEN" }, { status: 401 });
     }
 
-    return Response.json({
+    // ✅ 成功回傳統一格式
+    return NextResponse.json({
       status: "ok",
-      debug: { uid, tp, ts, rlc, expected }
+      valid: true,
+      uid,
+      tp,
+      ts,
+      rlc,
     });
 
   } catch (err) {
-    console.error("VERIFY ERROR", err);
-    return apiError("SERVER_ERROR", 500);
+    console.error("VERIFY ERROR:", err);
+    return NextResponse.json({ status: "error", code: "SERVER_ERROR" }, { status: 500 });
   }
 }
