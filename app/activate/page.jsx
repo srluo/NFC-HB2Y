@@ -2,6 +2,8 @@
 import { useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 
+export const dynamic = "force-dynamic";  // ⬅️ 關鍵，禁止靜態化
+
 export default function ActivatePage() {
   const searchParams = useSearchParams();
   const uid = searchParams.get("uid"); // ← 從網址帶進來的 UID
