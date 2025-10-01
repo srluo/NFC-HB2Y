@@ -1,51 +1,101 @@
 "use client";
-import { useEffect, useState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useState } from "react";
 
-export default function VerifyPage() {
-  const searchParams = useSearchParams();
-  const d = searchParams.get("d");
-  const uuid = searchParams.get("uuid");
-  const router = useRouter();
+// ⬅️ 關鍵：強制動態渲染，避免 build 時預先渲染爆掉
+export const dynamic = "force-dynamic";
 
-  const [status, setStatus] = useState("loading"); // idle | loading | error | ok
-  const [error, setError] = useState(null);
+export default function HomePage() {
+  const [status, setStatus] = useState("idle");
+  const [form, setForm] = useState({
+    uid: "",
+    name: "",
+    birthday_detail: "",
+    blood_type: "",
+    hobbies: ""
+  });
 
-  useEffect(() => {
-    async function verify() {
-      if (!d || !uuid) {
-        setError("❌ 缺少必要參數");
-        setStatus("error");
-        return;
+  const handleChange = (e) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setStatus("loading");
+
+    try {
+      const res = await fetch("/api/card-activate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setStatus(`error: ${data.code || data.reason}`);
+      } else {
+        setStatus(`✅ 卡片啟用成功！點數：${data.points}`);
       }
-
-      try {
-        const res = await fetch(`/api/verify?d=${d}&uuid=${uuid}`);
-        const data = await res.json();
-        console.log("VERIFY RESPONSE:", data);
-
-        if (data.status === "ok") {
-          setStatus("ok");
-          setError(null);
-          // ⏩ 自動跳轉到開卡頁
-          router.push(`/activate?uid=${data.debug.uid}`);
-        } else {
-          setStatus("error");
-          setError("⚠️ 驗證失敗，請重新感應卡片");
-        }
-      } catch (err) {
-        setStatus("error");
-        setError("⚠️ 系統錯誤，請稍後再試");
-      }
+    } catch (err) {
+      setStatus("error: network error");
     }
-
-    verify();
-  }, [d, uuid, router]);
+  };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen text-center">
-      {status === "loading" && <p>🔄 驗證中，請稍候…</p>}
-      {status === "error" && <p className="text-red-500">{error}</p>}
+    <div className="max-w-md mx-auto mt-10">
+      <h1 className="text-2xl font-bold mb-4">啟用生日書卡</h1>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <input
+          type="text"
+          name="uid"
+          placeholder="UID"
+          value={form.uid}
+          onChange={handleChange}
+          className="w-full border p-2 rounded"
+        />
+        <input
+          type="text"
+          name="name"
+          placeholder="姓名"
+          value={form.name}
+          onChange={handleChange}
+          className="w-full border p-2 rounded"
+        />
+        <input
+          type="text"
+          name="birthday_detail"
+          placeholder="生日（詳細，如 1965-04-04）"
+          value={form.birthday_detail}
+          onChange={handleChange}
+          className="w-full border p-2 rounded"
+        />
+        <input
+          type="text"
+          name="blood_type"
+          placeholder="血型"
+          value={form.blood_type}
+          onChange={handleChange}
+          className="w-full border p-2 rounded"
+        />
+        <input
+          type="text"
+          name="hobbies"
+          placeholder="興趣嗜好"
+          value={form.hobbies}
+          onChange={handleChange}
+          className="w-full border p-2 rounded"
+        />
+        <button
+          type="submit"
+          disabled={status === "loading"}
+          className="w-full bg-indigo-600 text-white rounded-lg py-2 mt-4 hover:bg-indigo-700"
+        >
+          {status === "loading" ? "啟用中..." : "啟用卡片"}
+        </button>
+      </form>
+
+      {status !== "idle" && (
+        <div className="mt-4 text-sm text-gray-700">{status}</div>
+      )}
     </div>
   );
 }
