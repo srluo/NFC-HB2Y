@@ -9,10 +9,10 @@ export async function GET(req) {
 
   if (!d || !uuid) return apiError("MISSING_PARAMS", 400);
 
-  const uid = uuid.substring(0, 12);
-  const tp  = uuid.substring(12, 14);
-  const ts  = uuid.substring(14, 22);
-  const rlc = uuid.substring(22, 30);
+  const uid = uuid.substring(0, 14);   // 14 碼 UID
+  const tp  = uuid.substring(14, 16);  // 2 碼 TP
+  const ts  = uuid.substring(16, 24);  // 8 碼 TS
+  const rlc = uuid.substring(24, 32);  // 8 碼 RLC
 
   if (tp !== "HB") return apiError("INVALID_TP", 400);
 
