@@ -28,7 +28,7 @@ export async function GET(req) {
     const { uid, ts, rlc } = parsed;
 
     // 動態載入 CJS 簽章程式
-    const { sign } = await import("@/lib/sign.cjs");
+    const { sign } = await import("../../../lib/sign.cjs");
     const expect = String(sign({ uid, ts })).toUpperCase();
 
     if (expect !== rlc.toUpperCase()) {
