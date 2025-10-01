@@ -1,46 +1,39 @@
-import { NextResponse } from "next/server";
-import { sign } from "@/lib/sign"; // 你的 Mickey 驗證函式
+import { sign } from "@/lib/sign";
+import { apiError } from "@/lib/apiError";
 
 export async function GET(req) {
-  const { searchParams } = new URL(req.url);
-  const d = searchParams.get("d");
-  const uuid = searchParams.get("uuid");
-
-  if (!d || !uuid) {
-    return NextResponse.json({ status: "error", code: "MISSING_PARAMS" }, { status: 400 });
-  }
-
   try {
-    // 解析 uuid
-    const uid = uuid.substring(0, 14);  // ← 注意這裡，你之前切 12 錯了
+    const { searchParams } = new URL(req.url);
+    const uuid = searchParams.get("uuid");
+    const d = searchParams.get("d");
+
+    if (!uuid || !d) {
+      return apiError("MISSING_PARAMS", 400);
+    }
+
+    // uuid 結構: uid(14) + TP(2) + TS(8) + RLC(8)
+    const uid = uuid.substring(0, 14);
     const tp = uuid.substring(14, 16);
     const ts = uuid.substring(16, 24);
     const rlc = uuid.substring(24, 32);
 
-    // 只接受 HB
-    if (tp !== "HB") {
-      return NextResponse.json({ status: "error", code: "INVALID_TP" }, { status: 400 });
+    if (!uid || !tp || !ts || !rlc) {
+      return apiError("INVALID_UUID", 400);
     }
 
-    // 驗證 RLC
-    const expected = sign({ uid, ts }).substring(0, 8).toUpperCase();
+    // ⚡ 計算簽章
+    const expected = sign({ uid, ts });
 
-    if (expected !== rlc.toUpperCase()) {
-      return NextResponse.json({ status: "error", code: "INVALID_TOKEN" }, { status: 401 });
+    if (expected.toUpperCase() !== rlc.toUpperCase()) {
+      return apiError("INVALID_TOKEN", 403);
     }
 
-    // ✅ 成功回傳統一格式
-    return NextResponse.json({
+    return Response.json({
       status: "ok",
-      valid: true,
-      uid,
-      tp,
-      ts,
-      rlc,
+      debug: { uid, tp, ts, rlc, expected },
     });
-
   } catch (err) {
     console.error("VERIFY ERROR:", err);
-    return NextResponse.json({ status: "error", code: "SERVER_ERROR" }, { status: 500 });
+    return apiError("SERVER_ERROR", 500);
   }
 }
