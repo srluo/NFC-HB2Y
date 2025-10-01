@@ -1,79 +1,46 @@
-import { kv } from "@/lib/kv";
-import { apiError } from "@/lib/apiError";
-import pkg from "@/lib/sign.cjs";
-const { sign } = pkg;
-
-export const runtime = "nodejs";
+import { NextResponse } from "next/server";
+import { sign } from "@/lib/sign"; // 你的 Mickey 驗證函式
 
 export async function GET(req) {
-  const searchParams = req.nextUrl.searchParams;
+  const { searchParams } = new URL(req.url);
   const d = searchParams.get("d");
-  const uuid = (searchParams.get("uuid") || "").toUpperCase().trim();
+  const uuid = searchParams.get("uuid");
 
-  if (!d || !uuid) return apiError("MISSING_PARAMS", 400);
+  if (!d || !uuid) {
+    return NextResponse.json({ status: "error", code: "MISSING_PARAMS" }, { status: 400 });
+  }
 
-  // 解析 UUID → UID(14) + TP(2) + TS(8) + RLC(8)
-  const match = uuid.match(/^([0-9A-F]{14})(HB)([0-9A-F]{8})([0-9A-F]{8})$/);
-  if (!match) return apiError("INVALID_UUID_FORMAT", 400);
-
-  const uid = match[1];
-  const tp  = match[2];
-  const ts  = match[3];
-  const rlc = match[4];
-
-  // 1. Mickey 簽章驗證
-  let expected;
   try {
-    expected = sign({ uid, ts }).toUpperCase();
-  } catch (e) {
-    console.error("SIGN ERROR:", e);
-    return apiError("SERVER_ERROR", 500);
-  }
-  if (expected !== rlc) return apiError("INVALID_TOKEN", 401);
+    // 解析 uuid
+    const uid = uuid.substring(0, 14);  // ← 注意這裡，你之前切 12 錯了
+    const tp = uuid.substring(14, 16);
+    const ts = uuid.substring(16, 24);
+    const rlc = uuid.substring(24, 32);
 
-  // 2. TS 遞增驗證
-  const tsKey = `ts:${uid}`;
-  const lastTS = await kv.get(tsKey);
-  if (lastTS && parseInt(ts, 16) <= parseInt(lastTS, 16)) {
-    return apiError("TS_REPLAY_ATTACK", 403);
-  }
-  await kv.set(tsKey, ts);
+    // 只接受 HB
+    if (tp !== "HB") {
+      return NextResponse.json({ status: "error", code: "INVALID_TP" }, { status: 400 });
+    }
 
-  // 3. 查詢卡片資料
-  const cardKey = `card:${uid}`;
-  const card = await kv.hgetall(cardKey);
+    // 驗證 RLC
+    const expected = sign({ uid, ts }).substring(0, 8).toUpperCase();
 
-  if (!card) {
-    // 還沒有建立卡片記錄
-    return Response.json({
-      status: "verify_ok_but_no_card",
-      uid, tp, ts, rlc, birthday: d
+    if (expected !== rlc.toUpperCase()) {
+      return NextResponse.json({ status: "error", code: "INVALID_TOKEN" }, { status: 401 });
+    }
+
+    // ✅ 成功回傳統一格式
+    return NextResponse.json({
+      status: "ok",
+      valid: true,
+      uid,
+      tp,
+      ts,
+      rlc,
     });
-  }
 
-  if (card.status !== "ACTIVATED") {
-    // 已發卡，但還沒開卡 → 需要填表
-    return Response.json({
-      status: "verify_ok_but_not_activated",
-      uid, tp, ts, rlc,
-      birthday: card.birthday || d
-    });
+  } catch (err) {
+    console.error("VERIFY ERROR:", err);
+    return NextResponse.json({ status: "error", code: "SERVER_ERROR" }, { status: 500 });
   }
-
-  // 4. 已開卡 → 回傳生日書首頁 & 點數
-  return Response.json({
-    status: "verify_ok_and_activated",
-    uid,
-    tp,
-    ts,
-    rlc,
-    birthday: card.birthday,
-    user: {
-      name: card.user_name || "",
-      birthday_detail: card.user_birthday_detail || "",
-      blood_type: card.blood_type || "",
-      hobbies: card.hobbies || ""
-    },
-    points: parseInt(card.points || "0", 10)
-  });
 }
