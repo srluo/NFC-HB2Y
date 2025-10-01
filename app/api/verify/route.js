@@ -1,53 +1,62 @@
+// app/api/verify/route.js
 import { kv } from "@/lib/kv";
 import { apiError } from "@/lib/apiError";
 
-// 簡單正規化：1965-04-04 -> 19650404
-function normalizeBirthday(input) {
-  if (!input) return "";
-  return input.replace(/-/g, "").trim();
+export const runtime = "nodejs"; // 需要支援載入 CJS 的 sign.cjs
+
+function parseUuid(raw) {
+  if (!raw) return null;
+  const U = raw.toUpperCase().trim();
+  // 14 位 UID + 'HB' + 8 位 TS + 8 位 RLC
+  const m = U.match(/^([0-9A-F]{14})HB([0-9A-F]{8})([0-9A-F]{8})$/);
+  if (!m) return null;
+  return { uid: m[1], ts: m[2], rlc: m[3] };
 }
 
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
-    const d = searchParams.get("d");
+    const d = searchParams.get("d");     // 生日，格式 YYYYMMDD
     const uuid = searchParams.get("uuid");
 
-    if (!d || !uuid) {
-      return apiError("MISSING_PARAMS", 400);
+    if (!d || !uuid) return apiError("MISSING_PARAMS", 400);
+    if (!/^\d{8}$/.test(d)) return apiError("INVALID_BIRTHDAY", 400);
+
+    const parsed = parseUuid(uuid);
+    if (!parsed) return apiError("INVALID_UUID_FORMAT", 400);
+
+    const { uid, ts, rlc } = parsed;
+
+    // 動態載入 CJS 簽章程式
+    const { sign } = await import("@/lib/sign.cjs");
+    const expect = String(sign({ uid, ts })).toUpperCase();
+
+    if (expect !== rlc.toUpperCase()) {
+      return apiError("INVALID_TOKEN", 401);
     }
 
-    // 取 UID (uuid 前 14 碼)
-    const uid = uuid.substring(0, 14);
-    const key = `card:${uid}`;
-
-    // 讀取資料庫
-    const card = await kv.hgetall(key);
-    if (!card) {
-      return apiError("CARD_NOT_FOUND", 404);
+    // 防重放：TS 必須遞增
+    const tsKey = `ts:${uid}`;
+    const lastTs = await kv.get(tsKey);
+    if (lastTs && parseInt(ts, 16) <= parseInt(String(lastTs), 16)) {
+      return apiError("REPLAY_DETECTED", 401);
     }
+    await kv.set(tsKey, ts, { ex: 60 * 60 * 24 }); // 24h 內有效
 
-    // 比對生日
-    const dbBirthday = card?.birthday || "";
-    const dNorm = normalizeBirthday(d);
-    const dbNorm = normalizeBirthday(dbBirthday);
+    // 讀卡片基礎資料（若尚未匯入，仍允許進入開卡流程）
+    const cardKey = `card:${uid}`;
+    const card = await kv.hgetall(cardKey);
 
     return Response.json({
-      status: "debug",
+      status: "ok",
+      step: !card || Object.keys(card).length === 0 ? "NEW_CARD" : "KNOWN_CARD",
       uid,
-      raw: { fromUrl: d, fromDb: dbBirthday },
-      normalized: { url: dNorm, db: dbNorm },
-      match: dNorm === dbNorm
+      ts,
+      birthday_param: d,
+      card: card || null
     });
   } catch (err) {
-    // 捕捉所有例外，輸出清楚的錯誤訊息
-    return Response.json(
-      {
-        status: "error",
-        message: err.message,
-        stack: err.stack,
-      },
-      { status: 500 }
-    );
+    console.error("GET /api/verify error:", err);
+    return apiError("SERVER_ERROR", 500);
   }
 }
