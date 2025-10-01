@@ -2,11 +2,12 @@
 import { useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 
-export const dynamic = "force-dynamic";  // ⬅️ 關鍵，禁止靜態化
+// ⬅️ 關鍵：禁止 SSG，強制動態
+export const dynamic = "force-dynamic";
 
 export default function ActivatePage() {
   const searchParams = useSearchParams();
-  const uid = searchParams.get("uid"); // ← 從網址帶進來的 UID
+  const uid = searchParams.get("uid");  // ← 只會在瀏覽器生效
   const router = useRouter();
 
   const [form, setForm] = useState({
@@ -15,9 +16,7 @@ export default function ActivatePage() {
     blood_type: "",
     hobbies: ""
   });
-
-  const [status, setStatus] = useState("idle"); // idle | loading | success | error
-  const [message, setMessage] = useState("");
+  const [status, setStatus] = useState("idle");
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -26,7 +25,6 @@ export default function ActivatePage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setStatus("loading");
-    setMessage("");
 
     try {
       const res = await fetch("/api/card-activate", {
@@ -36,33 +34,20 @@ export default function ActivatePage() {
       });
 
       const data = await res.json();
-
-      if (res.ok && data.status === "activated") {
-        setStatus("success");
-        setMessage(`卡片啟用成功 ✅，剩餘點數：${data.points}`);
-        setTimeout(() => router.push("/"), 2000); // 2秒後回首頁
+      if (!res.ok) {
+        setStatus(`error: ${data.code || data.reason}`);
       } else {
-        setStatus("error");
-        setMessage(`⚠️ 啟用失敗：${data.code || data.reason}`);
+        setStatus(`✅ 卡片啟用成功！點數：${data.points}`);
+        setTimeout(() => router.push("/"), 2000);
       }
     } catch (err) {
-      setStatus("error");
-      setMessage("⚠️ 系統錯誤，請稍後再試");
+      setStatus("error: network error");
     }
   };
 
-  if (!uid) {
-    return (
-      <div className="p-4 text-center text-red-500">
-        ❌ 缺少 UID，請先感應卡片
-      </div>
-    );
-  }
-
   return (
-    <div className="max-w-md mx-auto mt-10 p-4 border rounded-lg shadow">
-      <h1 className="text-xl font-bold mb-4">啟用生日書卡</h1>
-
+    <div className="max-w-md mx-auto mt-10">
+      <h1 className="text-2xl font-bold mb-4">啟用生日書卡</h1>
       <form onSubmit={handleSubmit} className="space-y-3">
         <input
           type="text"
@@ -75,7 +60,7 @@ export default function ActivatePage() {
         <input
           type="text"
           name="birthday_detail"
-          placeholder="詳細生日 (例如 1965-04-04)"
+          placeholder="生日（詳細，如 1965-04-04）"
           value={form.birthday_detail}
           onChange={handleChange}
           className="w-full border p-2 rounded"
@@ -96,24 +81,17 @@ export default function ActivatePage() {
           onChange={handleChange}
           className="w-full border p-2 rounded"
         />
-
         <button
           type="submit"
           disabled={status === "loading"}
           className="w-full bg-indigo-600 text-white rounded-lg py-2 mt-4 hover:bg-indigo-700"
         >
-          {status === "loading" ? "啟用中..." : "確認啟用"}
+          {status === "loading" ? "啟用中..." : "啟用卡片"}
         </button>
       </form>
 
-      {message && (
-        <div
-          className={`mt-4 text-sm ${
-            status === "success" ? "text-green-600" : "text-red-500"
-          }`}
-        >
-          {message}
-        </div>
+      {status !== "idle" && (
+        <div className="mt-4 text-sm text-gray-700">{status}</div>
       )}
     </div>
   );
