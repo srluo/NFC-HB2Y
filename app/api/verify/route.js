@@ -1,43 +1,53 @@
 import { kv } from "@/lib/kv";
 import { apiError } from "@/lib/apiError";
 
-function normalizeBirthday(b) {
-  if (!b) return "";
-  return b.replace(/-/g, ""); // 把 1965-04-04 變成 19650404
+// 簡單正規化：1965-04-04 -> 19650404
+function normalizeBirthday(input) {
+  if (!input) return "";
+  return input.replace(/-/g, "").trim();
 }
 
 export async function GET(req) {
-  const { searchParams } = new URL(req.url);
-  const d = searchParams.get("d");
-  const uuid = searchParams.get("uuid");
+  try {
+    const { searchParams } = new URL(req.url);
+    const d = searchParams.get("d");
+    const uuid = searchParams.get("uuid");
 
-  if (!d || !uuid) {
-    return apiError("MISSING_PARAMS", 400);
+    if (!d || !uuid) {
+      return apiError("MISSING_PARAMS", 400);
+    }
+
+    // 取 UID (uuid 前 14 碼)
+    const uid = uuid.substring(0, 14);
+    const key = `card:${uid}`;
+
+    // 讀取資料庫
+    const card = await kv.hgetall(key);
+    if (!card) {
+      return apiError("CARD_NOT_FOUND", 404);
+    }
+
+    // 比對生日
+    const dbBirthday = card?.birthday || "";
+    const dNorm = normalizeBirthday(d);
+    const dbNorm = normalizeBirthday(dbBirthday);
+
+    return Response.json({
+      status: "debug",
+      uid,
+      raw: { fromUrl: d, fromDb: dbBirthday },
+      normalized: { url: dNorm, db: dbNorm },
+      match: dNorm === dbNorm
+    });
+  } catch (err) {
+    // 捕捉所有例外，輸出清楚的錯誤訊息
+    return Response.json(
+      {
+        status: "error",
+        message: err.message,
+        stack: err.stack,
+      },
+      { status: 500 }
+    );
   }
-
-  // 取 UID（例如 uuid=3949500194A474HB0000000028BC3B2B -> UID=3949500194A474）
-  const uid = uuid.substring(0, 14);
-  const key = `card:${uid}`;
-  const card = await kv.hgetall(key);
-
-  if (!card) {
-    return apiError("CARD_NOT_FOUND", 404);
-  }
-
-  const dbBirthday = card.birthday || "";
-  const dNorm = normalizeBirthday(d);
-  const dbNorm = normalizeBirthday(dbBirthday);
-
-  // Debug 輸出
-  return Response.json({
-    status: "debug",
-    uid,
-    fromUrl: d,
-    fromDb: dbBirthday,
-    normalized: {
-      url: dNorm,
-      db: dbNorm
-    },
-    match: dNorm === dbNorm
-  });
 }
