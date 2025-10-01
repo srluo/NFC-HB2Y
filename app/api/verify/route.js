@@ -1,66 +1,79 @@
-import { createRequire } from "module";
-const require = createRequire(import.meta.url);
-const { sign } = require("@/lib/sign.cjs");
+import { kv } from "@/lib/kv";
+import { apiError } from "@/lib/apiError";
+import pkg from "@/lib/sign.cjs";
+const { sign } = pkg;
 
-// 驗證 RLC (Rolling Code)
-function verifyRLC(uid, tp, ts, rlc) {
-  try {
-    const expected = sign({ uid, ts });
-    return expected.toLowerCase() === rlc.toLowerCase();
-  } catch (e) {
-    console.error("RLC 驗證失敗:", e);
-    return false;
-  }
-}
+export const runtime = "nodejs";
 
 export async function GET(req) {
-  const { searchParams } = new URL(req.url);
-  const d = searchParams.get("d");      // 生日日期
-  const uuid = searchParams.get("uuid"); // SIC43NT 提供的 uuid
+  const searchParams = req.nextUrl.searchParams;
+  const d = searchParams.get("d");
+  const uuid = (searchParams.get("uuid") || "").toUpperCase().trim();
 
-  if (!d || !uuid) {
-    return Response.json(
-      { status: "error", reason: "缺少必要參數" },
-      { status: 400 }
-    );
-  }
+  if (!d || !uuid) return apiError("MISSING_PARAMS", 400);
 
-  // 解析 uuid: [UID][TP][TS][RLC]
+  // 解析 UUID → UID(14) + TP(2) + TS(8) + RLC(8)
+  const match = uuid.match(/^([0-9A-F]{14})(HB)([0-9A-F]{8})([0-9A-F]{8})$/);
+  if (!match) return apiError("INVALID_UUID_FORMAT", 400);
+
+  const uid = match[1];
+  const tp  = match[2];
+  const ts  = match[3];
+  const rlc = match[4];
+
+  // 1. Mickey 簽章驗證
+  let expected;
   try {
-    const uid = uuid.slice(0, 14);       // 前14 hex = UID
-    const tp = uuid.slice(14, 16);       // 2 hex = TP (ex: "HB")
-    const ts = uuid.slice(16, 24);       // 8 hex = TS
-    const rlc = uuid.slice(24);          // 其餘 = RLC
-
-    if (tp !== "HB") {
-      return Response.json(
-        { status: "error", reason: "TP 錯誤 (需HB)" },
-        { status: 403 }
-      );
-    }
-
-    // 檢查 RLC
-    if (!verifyRLC(uid, tp, ts, rlc)) {
-      return Response.json(
-        { status: "error", reason: "RLC 驗證失敗" },
-        { status: 403 }
-      );
-    }
-
-    // ✅ 通過驗證 → 回傳開卡流程頁
-    return Response.json({
-      status: "ok",
-      step: "activate",
-      uid,
-      birthday: d,
-      ts,
-      message: "請填寫表單完成開卡"
-    });
-  } catch (err) {
-    console.error("UUID 解析錯誤:", err);
-    return Response.json(
-      { status: "error", reason: "UUID 格式錯誤" },
-      { status: 400 }
-    );
+    expected = sign({ uid, ts }).toUpperCase();
+  } catch (e) {
+    console.error("SIGN ERROR:", e);
+    return apiError("SERVER_ERROR", 500);
   }
+  if (expected !== rlc) return apiError("INVALID_TOKEN", 401);
+
+  // 2. TS 遞增驗證
+  const tsKey = `ts:${uid}`;
+  const lastTS = await kv.get(tsKey);
+  if (lastTS && parseInt(ts, 16) <= parseInt(lastTS, 16)) {
+    return apiError("TS_REPLAY_ATTACK", 403);
+  }
+  await kv.set(tsKey, ts);
+
+  // 3. 查詢卡片資料
+  const cardKey = `card:${uid}`;
+  const card = await kv.hgetall(cardKey);
+
+  if (!card) {
+    // 還沒有建立卡片記錄
+    return Response.json({
+      status: "verify_ok_but_no_card",
+      uid, tp, ts, rlc, birthday: d
+    });
+  }
+
+  if (card.status !== "ACTIVATED") {
+    // 已發卡，但還沒開卡 → 需要填表
+    return Response.json({
+      status: "verify_ok_but_not_activated",
+      uid, tp, ts, rlc,
+      birthday: card.birthday || d
+    });
+  }
+
+  // 4. 已開卡 → 回傳生日書首頁 & 點數
+  return Response.json({
+    status: "verify_ok_and_activated",
+    uid,
+    tp,
+    ts,
+    rlc,
+    birthday: card.birthday,
+    user: {
+      name: card.user_name || "",
+      birthday_detail: card.user_birthday_detail || "",
+      blood_type: card.blood_type || "",
+      hobbies: card.hobbies || ""
+    },
+    points: parseInt(card.points || "0", 10)
+  });
 }
