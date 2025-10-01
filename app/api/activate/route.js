@@ -1,6 +1,7 @@
 import { kv } from "@/lib/kv";
 import { apiError } from "@/lib/apiError";
 
+// POST /api/activate
 export async function POST(req) {
   try {
     const { uid, name, birthday_detail, blood_type, hobbies } = await req.json();
