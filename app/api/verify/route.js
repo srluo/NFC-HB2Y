@@ -13,8 +13,8 @@ export async function GET(req) {
     // 簡單解析 uuid
     const uid = uuid.slice(0, 14);
     const tp = uuid.slice(14, 16);
-    const ts = uuid.slice(16, 25);
-    const rlc = uuid.slice(25);
+    const ts = uuid.slice(16, 24);
+    const rlc = uuid.slice(24);
 
     console.log("DEBUG:", { uid, tp, ts, rlc });
 
