@@ -1,8 +1,6 @@
 "use client";
 import { useState } from "react";
 
-
-
 export default function ActivatePage() {
   const [status, setStatus] = useState("idle");
   const [form, setForm] = useState({
@@ -16,9 +14,6 @@ export default function ActivatePage() {
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
-
-
-
 
   const handleSubmit = async (e) => {
     e.preventDefault();
